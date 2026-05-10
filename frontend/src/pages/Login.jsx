@@ -1,98 +1,110 @@
-Action: file_editor create /app/frontend/src/pages/Login.jsx --file-text "import { useState } from \"react\";
-import { Link, useNavigate } from \"react-router-dom\";
-import { motion } from \"framer-motion\";
-import { toast } from \"sonner\";
-import { Sparkles, Mail, Lock, ArrowRight } from \"lucide-react\";
-
-import Aurora from \"@/components/Aurora\";
-import { Button } from \"@/components/ui/button\";
-import { Input } from \"@/components/ui/input\";
-import { Label } from \"@/components/ui/label\";
-import { useAuth } from \"@/lib/auth.jsx\";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { BookOpen, Eye, EyeOff } from "lucide-react";
+import { toast } from "sonner";
+import { useAuth } from "../lib/auth.jsx";
 
 export default function Login() {
   const { login } = useAuth();
-  const nav = useNavigate();
-  const [email, setEmail] = useState(\"\");
-  const [password, setPassword] = useState(\"\");
-  const [busy, setBusy] = useState(false);
+  const navigate = useNavigate();
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const submit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setBusy(true);
+    if (!form.email || !form.password) {
+      toast.error("Please fill in all fields");
+      return;
+    }
+    setLoading(true);
     try {
-      await login(email.trim(), password);
-      toast.success(\"Welcome back\");
-      nav(\"/dashboard\");
+      await login(form.email, form.password);
+      toast.success("Welcome back!");
+      navigate("/dashboard");
     } catch (err) {
-      toast.error(err?.response?.data?.detail || \"Login failed\");
+      toast.error(err.response?.data?.detail || "Invalid email or password");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className=\"relative min-h-screen flex items-center justify-center px-4\">
-      <Aurora />
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className=\"relative w-full max-w-md glass rounded-3xl p-8\"
-      >
-        <Link to=\"/\" className=\"inline-flex items-center gap-2 mb-8\">
-          <div className=\"size-8 rounded-xl bg-gradient-to-br from-rose-500 via-amber-500 to-emerald-500 grid place-items-center\">
-            <Sparkles className=\"size-4 text-black\" />
-          </div>
-          <span className=\"font-display font-extrabold\">Lumen<span className=\"aurora-text\">.ai</span></span>
-        </Link>
-        <h1 className=\"font-display text-3xl font-black tracking-tight\">Welcome back</h1>
-        <p className=\"mt-1 text-sm text-zinc-400\">Sign in to continue learning</p>
+    <div className="min-h-screen bg-black flex items-center justify-center px-4">
+      {/* Glow */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-        <form onSubmit={submit} className=\"mt-8 space-y-4\">
-          <div className=\"space-y-2\">
-            <Label htmlFor=\"email\" className=\"text-zinc-300\">Email</Label>
-            <div className=\"relative\">
-              <Mail className=\"absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500\" />
-              <Input
-                id=\"email\"
-                type=\"email\"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                placeholder=\"you@school.edu\"
-                className=\"pl-9 bg-zinc-950 border-zinc-800 focus-visible:ring-amber-500\"
-                data-testid=\"login-email-input\"
-              />
+      <div className="w-full max-w-sm relative">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-2.5 mb-6">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-rose-500 via-amber-500 to-emerald-500 flex items-center justify-center">
+              <BookOpen className="w-4 h-4 text-black" />
             </div>
+            <span className="font-bold text-lg text-white">Lectura</span>
           </div>
-          <div className=\"space-y-2\">
-            <Label htmlFor=\"password\" className=\"text-zinc-300\">Password</Label>
-            <div className=\"relative\">
-              <Lock className=\"absolute left-3 top-1/2 -translate-y-1/2 size-4 text-zinc-500\" />
-              <Input
-                id=\"password\"
-                type=\"password\"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                placeholder=\"••••••••\"
-                className=\"pl-9 bg-zinc-950 border-zinc-800 focus-visible:ring-amber-500\"
-                data-testid=\"login-password-input\"
-              />
-            </div>
-          </div>
-          <Button type=\"submit\" disabled={busy} className=\"w-full rounded-full bg-white text-black hover:bg-zinc-200 h-11\" data-testid=\"login-submit-btn\">
-            {busy ? \"Signing in...\" : (<>Sign in <ArrowRight className=\"size-4 ml-2\" /></>)}
-          </Button>
-        </form>
-        <div className=\"mt-6 text-center text-sm text-zinc-400\">
-          New here?{\" \"}
-          <Link to=\"/signup\" className=\"text-amber-400 hover:text-amber-300\" data-testid=\"login-to-signup-link\">Create an account</Link>
+          <h1 className="text-2xl font-black text-white mb-1">Welcome back</h1>
+          <p className="text-white/40 text-sm">Sign in to your account</p>
         </div>
-      </motion.div>
+
+        {/* Form */}
+        <div className="bg-white/[0.03] border border-white/10 rounded-2xl p-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">Email</label>
+              <input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="you@example.com"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-amber-500/50 focus:bg-white/[0.07] transition-all"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-white/50 mb-1.5">Password</label>
+              <div className="relative">
+                <input
+                  type={showPw ? "text" : "password"}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  placeholder="••••••••"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3.5 py-2.5 pr-10 text-sm text-white placeholder-white/25 focus:outline-none focus:border-amber-500/50 focus:bg-white/[0.07] transition-all"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPw(!showPw)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60"
+                >
+                  {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500 text-black font-bold py-2.5 rounded-lg text-sm hover:opacity-90 transition-opacity disabled:opacity-50 mt-2"
+            >
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        </div>
+
+        <p className="text-center text-white/40 text-sm mt-6">
+          Don't have an account?{" "}
+          <Link to="/signup" className="text-amber-400 hover:text-amber-300 font-medium">
+            Sign up free
+          </Link>
+        </p>
+
+        {/* Demo hint */}
+        <div className="mt-4 p-3 bg-white/[0.02] border border-white/5 rounded-xl text-center">
+          <p className="text-xs text-white/30">
+            Demo: <span className="text-white/50">test@lectura.dev</span> / <span className="text-white/50">password123</span>
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
-"
-Observation: Create successful: /app/frontend/src/pages/Login.jsx
