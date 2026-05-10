@@ -1,5 +1,5 @@
-Action: file_editor create /app/frontend/src/lib/auth.jsx --file-text "import { createContext, useContext, useEffect, useState, useCallback } from \"react\";
-import api from \"./api\";
+import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import api from "./api";
 
 const AuthContext = createContext(null);
 
@@ -8,40 +8,45 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   const fetchMe = useCallback(async () => {
-    const token = localStorage.getItem(\"lms_token\");
+    const token = localStorage.getItem("lectura_token");
     if (!token) {
       setUser(null);
       setLoading(false);
       return;
     }
     try {
-      const { data } = await api.get(\"/auth/me\");
+      const { data } = await api.get("/auth/me");
       setUser(data);
     } catch {
-      localStorage.removeItem(\"lms_token\");
+      localStorage.removeItem("lectura_token");
       setUser(null);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchMe(); }, [fetchMe]);
+  useEffect(() => {
+    fetchMe();
+  }, [fetchMe]);
 
   const login = async (email, password) => {
-    const { data } = await api.post(\"/auth/login\", { email, password });
-    localStorage.setItem(\"lms_token\", data.access_token);
+    const { data } = await api.post("/auth/login", { email, password });
+    localStorage.setItem("lectura_token", data.access_token);
     setUser(data.user);
     return data.user;
   };
+
   const signup = async (name, email, password) => {
-    const { data } = await api.post(\"/auth/signup\", { name, email, password });
-    localStorage.setItem(\"lms_token\", data.access_token);
+    const { data } = await api.post("/auth/signup", { name, email, password });
+    localStorage.setItem("lectura_token", data.access_token);
     setUser(data.user);
     return data.user;
   };
+
   const logout = () => {
-    localStorage.removeItem(\"lms_token\");
+    localStorage.removeItem("lectura_token");
     setUser(null);
+    window.location.href = "/";
   };
 
   return (
@@ -51,6 +56,8 @@ export function AuthProvider({ children }) {
   );
 }
 
-export const useAuth = () => useContext(AuthContext);
-"
-Observation: Create successful: /app/frontend/src/lib/auth.jsx
+export const useAuth = () => {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  return ctx;
+};
