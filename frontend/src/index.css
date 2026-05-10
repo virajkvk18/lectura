@@ -1,0 +1,115 @@
+Action: file_editor create /app/frontend/src/index.css --file-text "@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Cabinet Grotesk via Fontshare */
+@import url('https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700,500,400,900&display=swap');
+
+@layer base {
+  :root {
+    /* Dark obsidian by default - this is the canonical theme. The .light class flips it. */
+    --background: 0 0% 0%;            /* #000 */
+    --foreground: 0 0% 100%;          /* #fff */
+    --card: 0 0% 4%;                  /* #0A0A0A */
+    --card-foreground: 0 0% 100%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 240 6% 10%;          /* #18181B */
+    --secondary-foreground: 0 0% 100%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 4% 65%;
+    --accent: 38 92% 50%;             /* amber-500 */
+    --accent-foreground: 0 0% 0%;
+    --destructive: 350 89% 60%;       /* rose-500 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 5% 16%;             /* #27272A */
+    --input: 240 5% 16%;
+    --ring: 38 92% 50%;
+    --radius: 0.875rem;
+  }
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 4%;
+    --primary: 240 10% 4%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 10% 4%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 40%;
+    --accent: 38 92% 50%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 350 89% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 38 92% 50%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: \"ss01\", \"cv11\";
+  }
+  ::selection { background: rgba(245, 158, 11, 0.35); color: white; }
+  h1, h2, h3, h4 { font-family: 'Cabinet Grotesk', 'Manrope', sans-serif; }
+}
+
+/* ===== Aurora gradient utilities ===== */
+.aurora-text {
+  background: linear-gradient(90deg, #f43f5e 0%, #f59e0b 50%, #10b981 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.aurora-bg {
+  background-image: radial-gradient(60% 50% at 20% 20%, rgba(244,63,94,0.35) 0%, transparent 60%),
+    radial-gradient(50% 50% at 80% 30%, rgba(245,158,11,0.30) 0%, transparent 60%),
+    radial-gradient(60% 60% at 50% 90%, rgba(16,185,129,0.30) 0%, transparent 60%);
+  filter: blur(80px);
+}
+.glass {
+  background: rgba(10, 10, 10, 0.60);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.light .glass {
+  background: rgba(255, 255, 255, 0.65);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+.light .grid-bg {
+  background-image:
+    linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+}
+.shimmer {
+  background: linear-gradient(90deg, transparent, rgba(245,158,11,0.18), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2.4s linear infinite;
+}
+.scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(245,158,11,0.5); }
+
+@layer base {
+  [data-debug-wrapper=\"true\"] { display: contents !important; }
+}
+"
+Observation: Overwrite successful: /app/frontend/src/index.css
