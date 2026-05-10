@@ -1,20 +1,25 @@
-Action: file_editor create /app/frontend/src/pages/VideoLearning.jsx --file-text "import { useEffect, useRef, useState } from \"react\";
-import { useParams, Link } from \"react-router-dom\";
-import { motion } from \"framer-motion\";
-import { ArrowLeft, ListMusic } from \"lucide-react\";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { useParams, Link } from "react-router-dom";
+import { ArrowLeft, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import api from "../lib/api";
+import { formatTime } from "../lib/utils";
+import VideoPlayer from "../components/VideoPlayer";
+import TranscriptPanel from "../components/TranscriptPanel";
+import ChatPanel from "../components/ChatPanel";
+import NotesPanel from "../components/NotesPanel";
+import SummaryPanel from "../components/SummaryPanel";
+import FlashcardsPanel from "../components/FlashcardsPanel";
+import QuizPanel from "../components/QuizPanel";
 
-import Aurora from \"@/components/Aurora\";
-import Navbar from \"@/components/Navbar\";
-import VideoPlayer from \"@/components/VideoPlayer\";
-import TranscriptPanel from \"@/components/TranscriptPanel\";
-import ChatPanel from \"@/components/ChatPanel\";
-import NotesPanel from \"@/components/NotesPanel\";
-import SummaryPanel from \"@/components/SummaryPanel\";
-import FlashcardsPanel from \"@/components/FlashcardsPanel\";
-import QuizPanel from \"@/components/QuizPanel\";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from \"@/components/ui/tabs\";
-import api from \"@/lib/api\";
-import { formatTime } from \"@/lib/utils\";
+const TABS = [
+  { id: "chat", label: "Chat" },
+  { id: "transcript", label: "Transcript" },
+  { id: "notes", label: "Notes" },
+  { id: "summary", label: "Summary" },
+  { id: "flashcards", label: "Flashcards" },
+  { id: "quiz", label: "Quiz" },
+];
 
 export default function VideoLearning() {
   const { lectureId } = useParams();
@@ -22,131 +27,184 @@ export default function VideoLearning() {
   const [bookmarks, setBookmarks] = useState([]);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const seekHandle = useRef(null);
+  const [activeTab, setActiveTab] = useState("chat");
+  const [loading, setLoading] = useState(true);
+  const seekRef = useRef(null);
   const lastSavedRef = useRef(0);
 
   useEffect(() => {
     (async () => {
-      const { data } = await api.get(`/lectures/${lectureId}`);
-      setLecture(data);
-      setDuration(data.duration);
-      const { data: bms } = await api.get(`/bookmarks/${lectureId}`);
-      setBookmarks(bms);
+      try {
+        const [{ data: lec }, { data: bms }] = await Promise.all([
+          api.get(`/lectures/${lectureId}`),
+          api.get(`/bookmarks/${lectureId}`),
+        ]);
+        setLecture(lec);
+        setBookmarks(bms);
+      } catch (err) {
+        toast.error("Failed to load lecture");
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [lectureId]);
 
-  // Save progress every 10s
-  useEffect(() => {
-    if (!lecture || !duration) return;
-    const t = setInterval(() => {
-      if (Math.abs(currentTime - lastSavedRef.current) > 5) {
-        lastSavedRef.current = currentTime;
-        api.post(\"/progress\", {
-          lecture_id: lectureId, position: currentTime, duration: duration,
+  // Save progress every 10s of watched time
+  const handleTimeUpdate = useCallback(
+    (time, dur) => {
+      setCurrentTime(time);
+      if (dur > 0) setDuration(dur);
+      if (time - lastSavedRef.current >= 10 && dur > 0) {
+        lastSavedRef.current = time;
+        api.post("/progress", {
+          lecture_id: lectureId,
+          position: time,
+          duration: dur,
         }).catch(() => {});
       }
-    }, 5000);
-    return () => clearInterval(t);
-  }, [currentTime, duration, lecture, lectureId]);
+    },
+    [lectureId]
+  );
 
-  const handleSeek = (t) => seekHandle.current?.(t);
+  const seekTo = useCallback((t) => {
+    seekRef.current?.(t);
+  }, []);
 
-  if (!lecture) {
+  const addBookmark = useCallback(
+    async (label, timestamp) => {
+      try {
+        const { data } = await api.post("/bookmarks", {
+          lecture_id: lectureId,
+          label,
+          timestamp,
+        });
+        setBookmarks((prev) => [...prev, data]);
+        toast.success("Bookmark saved");
+      } catch {
+        toast.error("Failed to save bookmark");
+      }
+    },
+    [lectureId]
+  );
+
+  const removeBookmark = useCallback(async (id) => {
+    try {
+      await api.delete(`/bookmarks/${id}`);
+      setBookmarks((prev) => prev.filter((b) => b.id !== id));
+    } catch {
+      toast.error("Failed to remove bookmark");
+    }
+  }, []);
+
+  if (loading) {
     return (
-      <div className=\"min-h-screen grid place-items-center bg-background text-foreground\">
-        <div className=\"size-10 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin\" />
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <Loader2 className="w-8 h-8 text-amber-400 animate-spin" />
       </div>
     );
   }
 
-  const currentChapter = (lecture.chapters || []).find((c) => currentTime >= c.start && currentTime < c.end);
+  if (!lecture) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-white/60 gap-4">
+        <p>Lecture not found</p>
+        <Link to="/dashboard" className="text-amber-400 hover:text-amber-300 text-sm">← Back to dashboard</Link>
+      </div>
+    );
+  }
 
   return (
-    <div className=\"relative min-h-screen pb-12\">
-      <Aurora />
-      <Navbar />
-
-      <div className=\"relative mx-auto max-w-[1500px] px-4 md:px-6 pt-6\">
-        <Link to=\"/dashboard\" className=\"inline-flex items-center gap-1.5 text-sm text-zinc-400 hover:text-white transition-colors\" data-testid=\"back-to-dashboard\">
-          <ArrowLeft className=\"size-4\" /> Dashboard
+    <div className="min-h-screen bg-[#050505] text-white flex flex-col">
+      {/* Top bar */}
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/5 bg-black/60 backdrop-blur sticky top-0 z-20">
+        <Link
+          to="/dashboard"
+          className="text-white/40 hover:text-white/70 transition-colors p-1.5 rounded-lg hover:bg-white/5"
+        >
+          <ArrowLeft className="w-4 h-4" />
         </Link>
-
-        <div className=\"mt-4 flex flex-wrap items-end justify-between gap-3\">
-          <div>
-            <h1 className=\"font-display text-2xl md:text-4xl font-black tracking-tight\" data-testid=\"lecture-title\">{lecture.title}</h1>
-            <div className=\"mt-1 text-sm text-zinc-400\">{lecture.instructor} · {formatTime(lecture.duration)}</div>
-          </div>
-          {currentChapter && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className=\"flex items-center gap-2 text-xs font-mono text-zinc-300 bg-white/5 border border-white/10 rounded-full px-3 py-1.5\" data-testid=\"current-chapter\">
-              <ListMusic className=\"size-3.5 text-amber-400\" />
-              {currentChapter.title}
-            </motion.div>
-          )}
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-bold truncate">{lecture.title}</h1>
+          <p className="text-xs text-white/40 truncate">{lecture.instructor}</p>
         </div>
+        <div className="text-xs text-white/30 font-mono hidden sm:block">
+          {formatTime(currentTime)} / {formatTime(duration)}
+        </div>
+      </div>
 
-        <div className=\"mt-6 grid grid-cols-1 lg:grid-cols-12 gap-5\">
-          {/* Player + transcript stack */}
-          <div className=\"lg:col-span-8 space-y-5\">
-            <VideoPlayer
-              src={lecture.video_url}
-              chapters={lecture.chapters}
-              bookmarks={bookmarks}
-              duration={lecture.duration}
-              onTimeUpdate={(t, d) => { setCurrentTime(t); if (d) setDuration(d); }}
-              onSeek={(t) => setCurrentTime(t)}
-              registerSeekHandle={(fn) => { seekHandle.current = fn; }}
-            />
+      {/* Main layout */}
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+        {/* Left: Video + tabs */}
+        <div className="w-full lg:w-[58%] flex flex-col border-r border-white/5">
+          <VideoPlayer
+            videoUrl={lecture.video_url}
+            chapters={lecture.chapters || []}
+            bookmarks={bookmarks}
+            onTimeUpdate={handleTimeUpdate}
+            onSeekReady={(fn) => { seekRef.current = fn; }}
+            currentTime={currentTime}
+            onAddBookmark={addBookmark}
+          />
 
-            <div className=\"rounded-2xl border border-white/10 bg-zinc-950/70 p-4 md:p-5\">
-              <div className=\"flex items-center justify-between mb-3\">
-                <h3 className=\"font-display text-lg font-bold\">Transcript</h3>
-                <span className=\"text-[11px] font-mono text-zinc-500\">click any line to jump</span>
-              </div>
-              <div className=\"h-[320px]\">
-                <TranscriptPanel
-                  segments={lecture.segments}
+          {/* Tab bar */}
+          <div className="flex border-b border-white/5 bg-black/40 overflow-x-auto">
+            {TABS.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex-shrink-0 px-4 py-3 text-xs font-semibold transition-colors whitespace-nowrap ${
+                  activeTab === tab.id
+                    ? "text-amber-400 border-b-2 border-amber-400 -mb-px"
+                    : "text-white/40 hover:text-white/70"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab content (below video on desktop; scrollable) */}
+          <div className="flex-1 overflow-y-auto">
+            {activeTab === "transcript" && (
+              <TranscriptPanel
+                segments={lecture.segments}
+                currentTime={currentTime}
+                onSeek={seekTo}
+              />
+            )}
+            {activeTab === "notes" && (
+              <NotesPanel lectureId={lectureId} currentTime={currentTime} onSeek={seekTo} />
+            )}
+            {activeTab === "summary" && (
+              <SummaryPanel
+                lectureId={lectureId}
+                chapters={lecture.chapters}
+                currentTime={currentTime}
+              />
+            )}
+            {activeTab === "flashcards" && <FlashcardsPanel lectureId={lectureId} />}
+            {activeTab === "quiz" && <QuizPanel lectureId={lectureId} />}
+            {activeTab === "chat" && (
+              <div className="h-full lg:hidden">
+                <ChatPanel
+                  lectureId={lectureId}
                   currentTime={currentTime}
-                  onSeek={handleSeek}
+                  onSeek={seekTo}
                 />
               </div>
-            </div>
+            )}
           </div>
+        </div>
 
-          {/* Right side panel */}
-          <div className=\"lg:col-span-4\">
-            <div className=\"rounded-2xl border border-white/10 bg-zinc-950/70 p-4 md:p-5 h-full min-h-[640px] flex flex-col\">
-              <Tabs defaultValue=\"chat\" className=\"flex-1 flex flex-col\">
-                <TabsList className=\"bg-white/5 border border-white/10 p-1 rounded-full justify-start overflow-x-auto\" data-testid=\"panel-tabs\">
-                  <TabsTrigger value=\"chat\" className=\"rounded-full data-[state=active]:bg-white data-[state=active]:text-black\" data-testid=\"tab-chat\">Chat</TabsTrigger>
-                  <TabsTrigger value=\"summary\" className=\"rounded-full data-[state=active]:bg-white data-[state=active]:text-black\" data-testid=\"tab-summary\">Summary</TabsTrigger>
-                  <TabsTrigger value=\"notes\" className=\"rounded-full data-[state=active]:bg-white data-[state=active]:text-black\" data-testid=\"tab-notes\">Notes</TabsTrigger>
-                  <TabsTrigger value=\"cards\" className=\"rounded-full data-[state=active]:bg-white data-[state=active]:text-black\" data-testid=\"tab-cards\">Cards</TabsTrigger>
-                  <TabsTrigger value=\"quiz\" className=\"rounded-full data-[state=active]:bg-white data-[state=active]:text-black\" data-testid=\"tab-quiz\">Quiz</TabsTrigger>
-                </TabsList>
-                <div className=\"mt-4 flex-1 min-h-0\">
-                  <TabsContent value=\"chat\" className=\"h-full m-0\">
-                    <ChatPanel lectureId={lectureId} currentTime={currentTime} onSeek={handleSeek} />
-                  </TabsContent>
-                  <TabsContent value=\"summary\" className=\"h-full m-0\">
-                    <SummaryPanel lectureId={lectureId} lecture={lecture} currentTime={currentTime} />
-                  </TabsContent>
-                  <TabsContent value=\"notes\" className=\"h-full m-0\">
-                    <NotesPanel lectureId={lectureId} currentTime={currentTime} onSeek={handleSeek} lectureTitle={lecture.title} />
-                  </TabsContent>
-                  <TabsContent value=\"cards\" className=\"h-full m-0\">
-                    <FlashcardsPanel lectureId={lectureId} />
-                  </TabsContent>
-                  <TabsContent value=\"quiz\" className=\"h-full m-0\">
-                    <QuizPanel lectureId={lectureId} />
-                  </TabsContent>
-                </div>
-              </Tabs>
-            </div>
-          </div>
+        {/* Right: Chat panel (always visible on desktop) */}
+        <div className="hidden lg:flex w-[42%] flex-col">
+          <ChatPanel
+            lectureId={lectureId}
+            currentTime={currentTime}
+            onSeek={seekTo}
+          />
         </div>
       </div>
     </div>
   );
 }
-"
-Observation: Create successful: /app/frontend/src/pages/VideoLearning.jsx
