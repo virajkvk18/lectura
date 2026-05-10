@@ -1,10 +1,9 @@
-Now let me create all backend & frontend files in parallel:
-Action: file_editor create /app/backend/models.py --file-text "\"\"\"
-Pydantic models for the AI Learning Companion.
-All models exclude MongoDB's _id; we use UUID-based ids.
-\"\"\"
+"""
+Pydantic models for Lectura AI Learning Companion.
+All models use UUID-based ids and exclude MongoDB's _id on read.
+"""
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 import uuid
 
@@ -32,13 +31,13 @@ class UserLogin(BaseModel):
 class UserPublic(BaseModel):
     id: str
     name: str
-    email: EmailStr
+    email: str
     created_at: str
 
 
 class TokenOut(BaseModel):
     access_token: str
-    token_type: str = \"bearer\"
+    token_type: str = "bearer"
     user: UserPublic
 
 
@@ -56,7 +55,7 @@ class TranscriptSegment(BaseModel):
 
 
 class Lecture(BaseModel):
-    model_config = ConfigDict(extra=\"ignore\")
+    model_config = ConfigDict(extra="ignore")
     id: str = Field(default_factory=_uid)
     title: str
     description: str
@@ -71,6 +70,7 @@ class Lecture(BaseModel):
 
 
 class LectureCard(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     id: str
     title: str
     description: str
@@ -78,6 +78,7 @@ class LectureCard(BaseModel):
     duration: float
     thumbnail: str
     tags: List[str] = []
+    chapters: List[Chapter] = []
 
 
 # ---------- Chat ----------
@@ -85,7 +86,7 @@ class ChatRequest(BaseModel):
     lecture_id: str
     session_id: Optional[str] = None
     message: str
-    current_time: float = 0.0  # current playback timestamp for context
+    current_time: float = 0.0
 
 
 class Citation(BaseModel):
@@ -99,7 +100,7 @@ class ChatMessage(BaseModel):
     session_id: str
     lecture_id: str
     user_id: str
-    role: str  # \"user\" | \"assistant\"
+    role: str  # "user" | "assistant"
     content: str
     citations: List[Citation] = []
     created_at: str = Field(default_factory=_now)
@@ -172,7 +173,7 @@ class Progress(BaseModel):
 # ---------- Summary ----------
 class SummaryRequest(BaseModel):
     lecture_id: str
-    kind: str = \"full\"  # \"full\" | \"chapter\" | \"last_5\" | \"topic\"
+    kind: str = "full"  # "full" | "chapter" | "last_5" | "topic"
     chapter_index: Optional[int] = None
     current_time: Optional[float] = None
     topic: Optional[str] = None
@@ -183,5 +184,3 @@ class SummaryResponse(BaseModel):
     title: str
     bullets: List[str]
     text: str
-"
-Observation: Create successful: /app/backend/models.py*
