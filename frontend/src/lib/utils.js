@@ -1,15 +1,28 @@
-Action: file_editor create /app/frontend/src/lib/utils.js --file-text "import { clsx } from \"clsx\";
-import { twMerge } from \"tailwind-merge\";
-
-export function cn(...inputs) {
-  return twMerge(clsx(inputs));
-}
-
+/**
+ * Format seconds to mm:ss string
+ */
 export function formatTime(s) {
   if (!isFinite(s) || s < 0) s = 0;
   const m = Math.floor(s / 60);
   const sec = Math.floor(s % 60);
-  return `${String(m).padStart(2, \"0\")}:${String(sec).padStart(2, \"0\")}`;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
-"
-Observation: Failed to create file: File already exists at: /app/frontend/src/lib/utils.js. Use overwrite=True to replace
+
+/**
+ * Truncate text to maxLen characters
+ */
+export function truncate(text, maxLen = 100) {
+  if (!text) return "";
+  return text.length <= maxLen ? text : text.slice(0, maxLen) + "…";
+}
+
+/**
+ * Debounce a function
+ */
+export function debounce(fn, delay) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
+  };
+}
