@@ -1,223 +1,309 @@
-Action: file_editor create /app/frontend/src/components/ChatPanel.jsx --file-text "import { useEffect, useRef, useState } from \"react\";
-import ReactMarkdown from \"react-markdown\";
-import { motion, AnimatePresence } from \"framer-motion\";
-import { Send, Sparkles, Mic, Square } from \"lucide-react\";
-import { toast } from \"sonner\";
-
-import { Button } from \"@/components/ui/button\";
-import { Textarea } from \"@/components/ui/textarea\";
-import api, { streamChat } from \"@/lib/api\";
-import { formatTime } from \"@/lib/utils\";
+import { useEffect, useRef, useState } from "react";
+import { Send, Sparkles, Mic, Loader2, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import api, { streamChat } from "../lib/api";
+import { formatTime } from "../lib/utils";
 
 const SUGGESTIONS = [
-  \"Summarize what was just said\",
-  \"Explain this concept simply\",
-  \"Give me an example\",
-  \"What should I learn next?\",
+  "Summarize what was just explained",
+  "Explain this concept simply",
+  "Give me a real-world example",
+  "What should I understand from this?",
 ];
 
-/** Click [mm:ss] in markdown to seek the player. */
-function renderInlineTimestamps(text, onSeek) {
+function TimestampText({ text, onSeek }) {
   const parts = text.split(/(\[\d{1,2}:\d{2}\])/g);
-  return parts.map((p, i) => {
-    const m = p.match(/^\[(\d{1,2}):(\d{2})\]$/);
-    if (m) {
-      const t = parseInt(m[1]) * 60 + parseInt(m[2]);
-      return (
-        <button
-          key={i}
-          onClick={() => onSeek?.(t)}
-          className=\"inline-flex items-center font-mono text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 px-1.5 py-0.5 rounded-full mx-0.5 align-middle\"
-          data-testid=\"chat-timestamp-pill\"
-        >
-          {p}
-        </button>
-      );
-    }
-    return <span key={i}>{p}</span>;
-  });
+  return (
+    <span>
+      {parts.map((part, i) => {
+        const m = part.match(/^\[(\d{1,2}):(\d{2})\]$/);
+        if (m) {
+          const t = parseInt(m[1]) * 60 + parseInt(m[2]);
+          return (
+            <button
+              key={i}
+              onClick={() => onSeek?.(t)}
+              className="inline-flex items-center font-mono text-[10px] text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 px-1.5 py-0.5 rounded-full mx-0.5 align-middle transition-colors"
+            >
+              {part}
+            </button>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
+function Message({ msg, onSeek }) {
+  const isUser = msg.role === "user";
+  return (
+    <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+      {/* Citations */}
+      {!isUser && msg.citations?.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-1 max-w-[85%]">
+          {msg.citations.map((c, i) => (
+            <button
+              key={i}
+              onClick={() => onSeek?.(c.start)}
+              className="text-[10px] font-mono text-amber-300/70 bg-amber-500/5 border border-amber-500/15 hover:bg-amber-500/15 px-2 py-0.5 rounded-full transition-colors"
+            >
+              {formatTime(c.start)}
+            </button>
+          ))}
+        </div>
+      )}
+      <div
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+          isUser
+            ? "bg-gradient-to-br from-amber-500 to-rose-500 text-black font-medium rounded-br-md"
+            : "bg-white/[0.05] border border-white/8 text-white/90 rounded-bl-md"
+        }`}
+      >
+        {isUser ? (
+          <p>{msg.content}</p>
+        ) : (
+          <div className="prose prose-invert prose-sm max-w-none prose-p:my-1 prose-li:my-0.5">
+            <ReactMarkdown
+              components={{
+                p: ({ children }) => (
+                  <p>
+                    {typeof children === "string"
+                      ? <TimestampText text={children} onSeek={onSeek} />
+                      : children}
+                  </p>
+                ),
+              }}
+            >
+              {msg.content}
+            </ReactMarkdown>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function ChatPanel({ lectureId, currentTime, onSeek }) {
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState(\"\");
+  const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [sessionId, setSessionId] = useState(null);
-  const [recording, setRecording] = useState(false);
-  const recRef = useRef(null);
-  const scrollRef = useRef(null);
+  const [streamText, setStreamText] = useState("");
+  const [pendingCitations, setPendingCitations] = useState([]);
+  const bottomRef = useRef(null);
+  const abortRef = useRef(null);
+  const textareaRef = useRef(null);
 
   useEffect(() => {
     (async () => {
       try {
         const { data } = await api.get(`/chat/history/${lectureId}`);
         setMessages(data);
-        if (data.length) setSessionId(data[data.length - 1].session_id);
-      } catch (_) {}
+      } catch {}
     })();
   }, [lectureId]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: \"smooth\" });
-  }, [messages]);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, streamText]);
 
   const send = async (text) => {
-    const msg = (text ?? input).trim();
+    const msg = text?.trim() || input.trim();
     if (!msg || streaming) return;
-    setInput(\"\");
-    const userMsg = { id: `u-${Date.now()}`, role: \"user\", content: msg, citations: [] };
-    const aiMsg = { id: `a-${Date.now()}`, role: \"assistant\", content: \"\", citations: [] };
-    setMessages((m) => [...m, userMsg, aiMsg]);
+    setInput("");
+
+    const userMsg = { role: "user", content: msg, id: Date.now().toString(), citations: [] };
+    setMessages((prev) => [...prev, userMsg]);
     setStreaming(true);
+    setStreamText("");
+    setPendingCitations([]);
+
+    abortRef.current = new AbortController();
+    let accumulated = "";
+    let citations = [];
+    let sid = sessionId;
+
     try {
       await streamChat({
         lectureId,
-        sessionId,
+        sessionId: sid,
         message: msg,
         currentTime,
+        signal: abortRef.current.signal,
         onEvent: (event, data) => {
-          if (event === \"session\") setSessionId(data.session_id);
-          else if (event === \"citations\") {
-            setMessages((m) => {
-              const copy = [...m];
-              copy[copy.length - 1] = { ...copy[copy.length - 1], citations: data };
-              return copy;
-            });
-          } else if (event === \"token\") {
-            setMessages((m) => {
-              const copy = [...m];
-              const last = copy[copy.length - 1];
-              copy[copy.length - 1] = { ...last, content: last.content + (data.t || \"\") };
-              return copy;
-            });
+          if (event === "citations") {
+            citations = data;
+            setPendingCitations(data);
+          } else if (event === "session") {
+            sid = data.session_id;
+            setSessionId(data.session_id);
+          } else if (event === "token") {
+            accumulated += data.t;
+            setStreamText(accumulated);
+          } else if (event === "done") {
+            const assistantMsg = {
+              id: data.message_id,
+              role: "assistant",
+              content: accumulated,
+              citations,
+            };
+            setMessages((prev) => [...prev, assistantMsg]);
+            setStreamText("");
+            setPendingCitations([]);
           }
         },
       });
-    } catch (e) {
-      toast.error(\"Chat failed: \" + (e.message || \"unknown\"));
+    } catch (err) {
+      if (err.name !== "AbortError") {
+        toast.error("Chat error — please try again");
+      }
+      // If we have accumulated text, save it anyway
+      if (accumulated) {
+        setMessages((prev) => [
+          ...prev,
+          { id: Date.now().toString(), role: "assistant", content: accumulated, citations },
+        ]);
+        setStreamText("");
+      }
     } finally {
       setStreaming(false);
     }
   };
 
-  // Voice input via Web Speech API
-  const toggleVoice = () => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { toast.info(\"Voice input not supported in this browser\"); return; }
-    if (recording) {
-      recRef.current?.stop();
-      setRecording(false);
-      return;
+  const clearHistory = async () => {
+    try {
+      await api.delete(`/chat/history/${lectureId}`);
+      setMessages([]);
+      setSessionId(null);
+      toast.success("Chat cleared");
+    } catch {
+      toast.error("Failed to clear chat");
     }
-    const rec = new SR();
-    rec.continuous = false;
-    rec.interimResults = true;
-    rec.lang = \"en-US\";
-    rec.onresult = (e) => {
-      const t = Array.from(e.results).map((r) => r[0].transcript).join(\"\");
-      setInput(t);
-    };
-    rec.onend = () => setRecording(false);
-    rec.start();
-    recRef.current = rec;
-    setRecording(true);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      send();
+    }
   };
 
   return (
-    <div className=\"flex flex-col h-full\" data-testid=\"chat-panel\">
-      <div ref={scrollRef} className=\"flex-1 overflow-y-auto scrollbar-thin px-1 pb-2 space-y-3\">
-        {messages.length === 0 && (
-          <div className=\"text-center mt-8 px-4\">
-            <div className=\"mx-auto size-12 rounded-2xl bg-gradient-to-br from-rose-500 via-amber-500 to-emerald-500 grid place-items-center\">
-              <Sparkles className=\"size-5 text-black\" />
-            </div>
-            <h4 className=\"mt-4 font-display text-lg font-bold\">Ask anything</h4>
-            <p className=\"mt-1 text-sm text-zinc-400\">The AI knows this exact lecture, second by second.</p>
-            <div className=\"mt-5 grid grid-cols-1 gap-2\">
-              {SUGGESTIONS.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => send(s)}
-                  className=\"text-left text-sm text-zinc-300 rounded-xl border border-white/10 hover:border-amber-500/40 hover:bg-amber-500/5 px-3 py-2 transition-colors\"
-                  data-testid=\"chat-suggestion-btn\"
-                >
-                  {s}
-                </button>
-              ))}
+    <div className="flex flex-col h-full min-h-0">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-400" />
+          <span className="text-sm font-semibold">AI Companion</span>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearHistory}
+            className="text-white/30 hover:text-white/60 transition-colors"
+            title="Clear chat"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4 min-h-0">
+        {messages.length === 0 && !streaming && (
+          <div className="text-center py-8">
+            <Sparkles className="w-8 h-8 text-amber-400/50 mx-auto mb-3" />
+            <p className="text-white/40 text-sm mb-1">Ask anything about this lecture</p>
+            <p className="text-white/25 text-xs">AI answers are grounded in the transcript</p>
+          </div>
+        )}
+
+        {messages.map((msg) => (
+          <Message key={msg.id} msg={msg} onSeek={onSeek} />
+        ))}
+
+        {/* Streaming message */}
+        {streaming && streamText && (
+          <div className="flex flex-col items-start gap-1">
+            {pendingCitations.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mb-1">
+                {pendingCitations.map((c, i) => (
+                  <button
+                    key={i}
+                    onClick={() => onSeek?.(c.start)}
+                    className="text-[10px] font-mono text-amber-300/70 bg-amber-500/5 border border-amber-500/15 px-2 py-0.5 rounded-full"
+                  >
+                    {formatTime(c.start)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="max-w-[85%] bg-white/[0.05] border border-white/8 rounded-2xl rounded-bl-md px-3.5 py-2.5 text-sm text-white/90">
+              <div className="prose prose-invert prose-sm max-w-none">
+                <ReactMarkdown>{streamText}</ReactMarkdown>
+              </div>
+              <span className="inline-block w-1 h-4 bg-amber-400 animate-pulse ml-0.5 align-middle" />
             </div>
           </div>
         )}
-        <AnimatePresence initial={false}>
-          {messages.map((m) => (
-            <motion.div
-              key={m.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className={`rounded-2xl px-4 py-3 ${
-                m.role === \"user\"
-                  ? \"bg-white/5 border border-white/10 ml-6\"
-                  : \"bg-amber-500/5 border border-amber-500/20 mr-6\"
-              }`}
-              data-testid={`chat-msg-${m.role}`}
-            >
-              {m.role === \"assistant\" && (
-                <div className=\"flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-[0.2em] text-amber-400 mb-1\">
-                  <Sparkles className=\"size-3\" /> Lumen AI
-                </div>
-              )}
-              <div className=\"prose prose-invert prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-li:my-0\">
-                <ReactMarkdown
-                  components={{
-                    p: ({ children }) => <p>{Array.isArray(children) ? children.map((c, i) => typeof c === \"string\" ? <span key={i}>{renderInlineTimestamps(c, onSeek)}</span> : c) : children}</p>,
-                    li: ({ children }) => <li>{Array.isArray(children) ? children.map((c, i) => typeof c === \"string\" ? <span key={i}>{renderInlineTimestamps(c, onSeek)}</span> : c) : children}</li>,
-                  }}
-                >
-                  {m.content || (streaming && m.role === \"assistant\" ? \"▍\" : \"\")}
-                </ReactMarkdown>
+
+        {streaming && !streamText && (
+          <div className="flex items-start gap-2">
+            <div className="bg-white/5 border border-white/8 rounded-2xl rounded-bl-md px-4 py-3">
+              <div className="flex items-center gap-2 text-white/40 text-xs">
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Thinking…
               </div>
-              {m.role === \"assistant\" && m.citations?.length > 0 && (
-                <div className=\"mt-2 flex flex-wrap gap-1.5\">
-                  {m.citations.slice(0, 5).map((c, i) => (
-                    <button
-                      key={i}
-                      onClick={() => onSeek?.(c.start)}
-                      className=\"text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 px-2 py-0.5 rounded-full transition-colors\"
-                      data-testid=\"chat-citation-btn\"
-                      title={c.text}
-                    >
-                      [{formatTime(c.start)}]
-                    </button>
-                  ))}
-                </div>
-              )}
-            </motion.div>
-          ))}
-        </AnimatePresence>
+            </div>
+          </div>
+        )}
+
+        <div ref={bottomRef} />
       </div>
 
-      <div className=\"border-t border-white/10 pt-3 mt-2\">
-        <div className=\"relative\">
-          <Textarea
+      {/* Suggestions */}
+      {messages.length === 0 && (
+        <div className="px-4 pb-2 flex flex-wrap gap-1.5">
+          {SUGGESTIONS.map((s) => (
+            <button
+              key={s}
+              onClick={() => send(s)}
+              className="text-xs text-white/50 bg-white/5 border border-white/10 hover:bg-white/10 hover:text-white/70 px-3 py-1.5 rounded-full transition-all"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="px-4 pb-4 pt-2 border-t border-white/5">
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === \"Enter\" && !e.shiftKey) { e.preventDefault(); send(); } }}
-            placeholder=\"Ask about this lecture...\"
-            rows={2}
-            className=\"bg-zinc-950 border-zinc-800 focus-visible:ring-amber-500 pr-24 resize-none\"
-            data-testid=\"chat-input\"
+            onKeyDown={handleKeyDown}
+            placeholder="Ask about the lecture…"
+            rows={1}
+            className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-white/25 focus:outline-none focus:border-amber-500/30 resize-none transition-all"
+            style={{ maxHeight: "120px" }}
+            disabled={streaming}
           />
-          <div className=\"absolute right-2 bottom-2 flex items-center gap-1\">
-            <Button size=\"icon\" variant=\"ghost\" onClick={toggleVoice} className=\"size-8\" data-testid=\"chat-voice-btn\" title=\"Voice input\">
-              {recording ? <Square className=\"size-4 text-rose-400\" /> : <Mic className=\"size-4\" />}
-            </Button>
-            <Button size=\"icon\" onClick={() => send()} disabled={streaming || !input.trim()} className=\"size-8 bg-white text-black hover:bg-zinc-200 rounded-full\" data-testid=\"chat-send-btn\">
-              <Send className=\"size-4\" />
-            </Button>
-          </div>
+          <button
+            onClick={() => send()}
+            disabled={!input.trim() || streaming}
+            className="p-2.5 bg-gradient-to-br from-amber-500 to-rose-500 text-black rounded-xl hover:opacity-90 transition-opacity disabled:opacity-40 flex-shrink-0"
+          >
+            {streaming ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Send className="w-4 h-4" />
+            )}
+          </button>
         </div>
       </div>
     </div>
   );
 }
-"
-Observation: Create successful: /app/frontend/src/components/ChatPanel.jsx
